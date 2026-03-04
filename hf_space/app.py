@@ -276,6 +276,17 @@ def build_interface() -> gr.Blocks:
             outputs=[seg_output, count_output, eval_output, metrics_output, mask_output],
         )
 
+        gr.Examples(
+            examples=[
+                ["samples/sample_1_image.png", "samples/sample_1_mask.png"],
+                ["samples/sample_2_image.png", "samples/sample_2_mask.png"],
+                ["samples/sample_3_image.png", "samples/sample_3_mask.png"],
+                ["samples/sample_4_image.png", "samples/sample_4_mask.png"],
+            ],
+            inputs=[input_image, gt_mask],
+            label="Sample Image Pairs (click to load, then click Run Segmentation)",
+        )
+
         gr.Markdown(
             "_Upload any microscopy image. For full evaluation panels, also upload "
             "the corresponding binary ground truth mask._"
