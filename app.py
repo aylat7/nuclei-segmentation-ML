@@ -261,7 +261,7 @@ def build_interface() -> gr.Blocks:
                     label="Confidence Threshold",
                 )
                 watershed_checkbox = gr.Checkbox(
-                    value=True,
+                    value=False,
                     label="Use watershed post-processing",
                 )
                 run_btn = gr.Button("Run Segmentation", variant="primary")
