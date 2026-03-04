@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.ndimage import distance_transform_edt, label
 from skimage.feature import peak_local_max
+from skimage.morphology import disk, opening
 from skimage.segmentation import watershed
 
 
@@ -55,17 +56,25 @@ def extract_instances(binary_mask: np.ndarray) -> List[np.ndarray]:
     return instances
 
 
-def watershed_separate(binary_mask: np.ndarray, min_distance: int = 10) -> np.ndarray:
+def watershed_separate(
+    binary_mask: np.ndarray,
+    min_distance: int = 5,
+    min_size: int = 15,
+) -> np.ndarray:
     """Separate touching nuclei using watershed on the distance transform.
 
     Args:
         binary_mask: 2D binary array (0s and 1s) of shape (H, W).
         min_distance: Minimum pixel distance between seed peaks. Larger values
             merge nearby seeds; smaller values split more aggressively.
+            Default 5 is calibrated for nuclei at 128x128 resolution.
+        min_size: Watershed regions with fewer than this many pixels are
+            removed as likely fragments rather than real nuclei.
 
     Returns:
         Labeled integer array of shape (H, W). Each unique non-zero value
-        identifies one separated nucleus region.
+        identifies one separated nucleus region. Labels are not guaranteed
+        to be contiguous after fragment removal.
 
     Example:
         >>> import numpy as np
@@ -79,10 +88,17 @@ def watershed_separate(binary_mask: np.ndarray, min_distance: int = 10) -> np.nd
     if not binary.any():
         return np.zeros_like(binary_mask, dtype=np.int32)
 
-    distance = distance_transform_edt(binary)
-    coords = peak_local_max(distance, min_distance=min_distance, labels=binary)
+    # Morphological opening with a small disk smooths jagged boundaries
+    # that would otherwise create spurious distance-transform peaks.
+    cleaned = opening(binary, disk(2))
+    # Fall back to original mask if opening erases everything
+    if not cleaned.any():
+        cleaned = binary
 
-    marker_mask = np.zeros(binary.shape, dtype=bool)
+    distance = distance_transform_edt(cleaned)
+    coords = peak_local_max(distance, min_distance=min_distance, labels=cleaned)
+
+    marker_mask = np.zeros(cleaned.shape, dtype=bool)
     if len(coords) > 0:
         marker_mask[tuple(coords.T)] = True
     else:
@@ -91,7 +107,16 @@ def watershed_separate(binary_mask: np.ndarray, min_distance: int = 10) -> np.nd
         marker_mask[idx] = True
 
     markers, _ = label(marker_mask)
+    # Use original binary as the mask so opened-away pixels are still assigned
     labeled = watershed(-distance, markers, mask=binary)
+
+    # Remove fragments smaller than min_size
+    for region_id in np.unique(labeled):
+        if region_id == 0:
+            continue
+        if (labeled == region_id).sum() < min_size:
+            labeled[labeled == region_id] = 0
+
     return labeled.astype(np.int32)
 
 
