@@ -1,10 +1,9 @@
 # =========================
-# Data and model outputs
+# Data and model weights
 # =========================
 data/
-outputs/
-hf_space/outputs/
-*.pth
+outputs/*.pth
+hf_space/outputs/*.pth
 
 # =========================
 # Python
