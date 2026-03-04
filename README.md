@@ -13,7 +13,7 @@ Semantic and instance-level cell nuclei segmentation using standard U-Net and At
 
 **[Try it on Hugging Face Spaces](https://huggingface.co/spaces/aylat7/nuclei-segmentation-ML)**
 
-Upload any microscopy image to get an instant segmentation overlay. The app highlights detected nuclei in green and, if you provide a ground truth mask, shows a four-panel color-coded evaluation with per-nucleus TP/FP/FN breakdown. Switch between U-Net and Attention U-Net checkpoints to compare outputs side by side.
+Upload any microscopy image to get an instant segmentation overlay. The app highlights detected nuclei in green and, if you provide a ground truth mask, shows a four-panel color-coded evaluation with per-nucleus TP/FP/FN breakdown. Switch between U-Net and Attention U-Net checkpoints and toggle watershed post-processing to compare outputs side by side. Four built-in sample image pairs (spanning few nuclei, dark background, light background, and dense clusters) are available as one-click examples.
 
 ---
 
@@ -51,7 +51,9 @@ Upload any microscopy image to get an instant segmentation overlay. The app high
 
 ### Key Findings
 
-Attention U-Net wins on pixel-level metrics (Dice +0.006, IoU +0.010), meaning its predicted masks have more accurate boundaries against the ground truth. However, standard U-Net achieves a higher instance-level F1 (0.8323 vs 0.7802). The explanation: attention gates concentrate the model on foreground regions globally, which sharpens boundary pixels, but the same global focus can cause the decoder to merge adjacent touching nuclei into a single connected blob. Standard U-Net propagates more spatially local skip features, which helps it preserve the separation between closely packed cells. The practical takeaway is that Attention U-Net is the better choice for pixel-accurate boundary tasks, while standard U-Net is preferable when counting individual nuclei matters most.
+Attention U-Net wins on pixel-level metrics (Dice +0.006, IoU +0.010), meaning its predicted masks have more accurate boundaries against the ground truth. However, standard U-Net achieves a higher instance-level F1 (0.8323 vs 0.7802) without post-processing. The explanation: attention gates concentrate the model on foreground regions globally, which sharpens boundary pixels, but the same global focus can cause the decoder to merge adjacent touching nuclei into a single connected blob. Standard U-Net propagates more spatially local skip features, which helps it preserve the separation between closely packed cells.
+
+**Watershed post-processing** (`Use watershed post-processing` checkbox in the demo, default on) addresses this directly. By running a distance-transform watershed on the predicted binary mask, touching nuclei that were merged into one connected component by the model are separated into individual instances before evaluation. This improves instance-level metrics for both models, especially Attention U-Net, narrowing the instance-F1 gap without any retraining.
 
 ---
 
@@ -142,7 +144,7 @@ medical-segmentation/
 │   ├── dataset.py               # NucleiDataset: loads and combines individual masks
 │   ├── train.py                 # Training loop, validation, checkpointing
 │   ├── evaluate.py              # Dice, IoU, load_model, prediction plots
-│   ├── visualize.py             # Color-coded TP/FP/FN overlays, instance metrics
+│   ├── visualize.py             # Color-coded TP/FP/FN overlays, instance metrics, watershed
 │   └── utils.py                 # Config loading, device setup, plot helpers
 ├── tests/
 │   ├── conftest.py              # Synthetic dataset fixture (3 samples, 64x64)
@@ -244,7 +246,7 @@ GPU training: uncomment the `deploy.resources.reservations` block in `docker-com
 | Layer | Technology |
 |---|---|
 | Deep learning | PyTorch 2.0+, torchvision |
-| Instance segmentation | scipy (connected component labeling) |
+| Instance segmentation | scipy (connected components), scikit-image (watershed) |
 | Demo UI | Gradio 4.x |
 | Visualization | matplotlib, Pillow, NumPy |
 | Configuration | PyYAML |
@@ -260,7 +262,7 @@ GPU training: uncomment the `deploy.resources.reservations` block in `docker-com
 pytest tests/ -v
 ```
 
-The suite contains **52 tests** across 8 modules:
+The suite contains **58 tests** across 7 modules:
 
 | Module | What it covers |
 |---|---|
@@ -268,7 +270,7 @@ The suite contains **52 tests** across 8 modules:
 | `test_attention_unet.py` | AttentionGate shapes with mismatched spatial dims, more params than U-Net |
 | `test_dataset.py` | Image/mask shapes, binary mask values, mask combining from individual files |
 | `test_metrics.py` | Dice and IoU: perfect overlap, no overlap, hand-calculated known values |
-| `test_visualize.py` | Instance extraction, greedy matching (TP/FP/FN), overlay dtype and shape |
+| `test_visualize.py` | Instance extraction, greedy matching (TP/FP/FN), overlay dtype and shape, nucleus counting, watershed separation of touching blobs |
 | `test_training.py` | Loss decreases over epochs, checkpoint saved, history dict keys |
 | `test_load_model.py` | `load_model` dispatches to correct architecture, rejects mismatched weights |
 
