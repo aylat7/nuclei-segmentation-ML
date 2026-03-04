@@ -13,7 +13,9 @@ Semantic and instance-level cell nuclei segmentation using standard U-Net and At
 
 **[Try it on Hugging Face Spaces](https://huggingface.co/spaces/aylat7/nuclei-segmentation-ML)**
 
-Upload any microscopy image to get an instant segmentation overlay. The app highlights detected nuclei in green and, if you provide a ground truth mask, shows a four-panel color-coded evaluation with per-nucleus TP/FP/FN breakdown. Switch between U-Net and Attention U-Net checkpoints and toggle watershed post-processing to compare outputs side by side. Four built-in sample image pairs (spanning few nuclei, dark background, light background, and dense clusters) are available as one-click examples.
+Upload any microscopy image to get an instant segmentation overlay. The app highlights detected nuclei in green and, if you provide a ground truth mask, shows a four-panel color-coded evaluation with per-nucleus TP/FP/FN breakdown. Switch between U-Net and Attention U-Net checkpoints and toggle watershed post-processing to compare outputs side by side. 
+
+** There are four built-in sample image pairs (spanning few nuclei, dark background, light background, and dense clusters) are available as one-click examples. They are located below the "Run Segmentation" button!
 
 ---
 
