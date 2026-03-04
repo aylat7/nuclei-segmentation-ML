@@ -1,0 +1,24 @@
+services:
+  demo:
+    build: .
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./data:/app/data:ro
+      - ./outputs:/app/outputs
+    command: python app.py
+
+  train:
+    build: .
+    volumes:
+      - ./data:/app/data:ro
+      - ./outputs:/app/outputs
+    command: python train_model.py
+    # GPU support - uncomment if NVIDIA GPU is available
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
