@@ -21,6 +21,8 @@ from src.visualize import (
     extract_instances,
     match_instances,
     plot_evaluation_panels,
+    watershed_separate,
+    watershed_to_binary_instances,
 )
 
 # ---------------------------------------------------------------------------
@@ -128,6 +130,7 @@ def run_inference(
     gt_mask_image: Optional[np.ndarray],
     model_name: str,
     threshold: float,
+    use_watershed: bool = True,
 ) -> Tuple[np.ndarray, Optional[np.ndarray], str, np.ndarray]:
     """Run segmentation and return all output tab contents.
 
@@ -159,9 +162,14 @@ def run_inference(
     img_orig = np.array(pil_image.convert("RGB"), dtype=np.float32) / 255.0
 
     # --- Tab 1: Segmentation overlay (green nuclei) ---
-    pred_instances = extract_instances(pred_mask)
+    if use_watershed:
+        labeled = watershed_separate(pred_mask)
+        pred_instances = watershed_to_binary_instances(labeled)
+        count_text = f"Detected {len(pred_instances)} nuclei (watershed)"
+    else:
+        pred_instances = extract_instances(pred_mask)
+        count_text = f"Detected {len(pred_instances)} nuclei"
     seg_overlay = create_overlay(img_orig, pred_instances, [], [])
-    count_text = f"Detected {count_nuclei(pred_mask)} nuclei"
 
     # --- Tab 4: Raw mask ---
     raw_mask_img = (pred_mask * 255).astype(np.uint8)
@@ -191,7 +199,7 @@ def run_inference(
 
         dice = dice_coefficient(pred_t, gt_t).item()
         iou = iou_score(pred_t, gt_t).item()
-        inst_metrics = compute_instance_metrics(pred_mask, gt_binary)
+        inst_metrics = compute_instance_metrics(pred_mask, gt_binary, use_watershed=use_watershed)
 
         metrics_lines = [
             f"Pixel-level Metrics:",
@@ -207,7 +215,7 @@ def run_inference(
         # --- Tab 2: Evaluation panels ---
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             tmp_path = tmp.name
-        plot_evaluation_panels(img_orig, pred_mask, gt_binary, tmp_path)
+        plot_evaluation_panels(img_orig, pred_mask, gt_binary, tmp_path, use_watershed=use_watershed)
         eval_panel_img = np.array(Image.open(tmp_path))
         Path(tmp_path).unlink(missing_ok=True)
     else:
@@ -252,6 +260,10 @@ def build_interface() -> gr.Blocks:
                     step=0.05,
                     label="Confidence Threshold",
                 )
+                watershed_checkbox = gr.Checkbox(
+                    value=True,
+                    label="Use watershed post-processing",
+                )
                 run_btn = gr.Button("Run Segmentation", variant="primary")
 
             with gr.Column(scale=2):
@@ -272,7 +284,7 @@ def build_interface() -> gr.Blocks:
 
         run_btn.click(
             fn=run_inference,
-            inputs=[input_image, gt_mask, model_selector, threshold_slider],
+            inputs=[input_image, gt_mask, model_selector, threshold_slider, watershed_checkbox],
             outputs=[seg_output, count_output, eval_output, metrics_output, mask_output],
         )
 

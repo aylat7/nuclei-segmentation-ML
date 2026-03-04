@@ -172,6 +172,7 @@ def generate_evaluation_panels(
     save_path: str,
     num_samples: int = 4,
     threshold: float = 0.5,
+    use_watershed: bool = True,
 ) -> None:
     """Generate color-coded 4-panel evaluation figures for best/worst samples.
 
@@ -222,7 +223,7 @@ def generate_evaluation_panels(
         mask_np = mask.squeeze().numpy()
 
         panel_path = save_dir / f"_tmp_panel_{rank}.png"
-        plot_evaluation_panels(img_np, pred, mask_np, str(panel_path))
+        plot_evaluation_panels(img_np, pred, mask_np, str(panel_path), use_watershed=use_watershed)
         panel_paths.append((dice_val, panel_path))
 
     # Assemble into one figure
@@ -252,6 +253,7 @@ def print_instance_metrics(
     device: torch.device,
     num_samples: int = 20,
     threshold: float = 0.5,
+    use_watershed: bool = True,
 ) -> None:
     """Compute and print instance-level precision, recall, F1 on a subset.
 
@@ -279,7 +281,7 @@ def print_instance_metrics(
             pred = (torch.sigmoid(logit) >= threshold).float().squeeze().cpu().numpy()
             mask_np = mask.squeeze().numpy()
 
-            metrics = compute_instance_metrics(pred, mask_np)
+            metrics = compute_instance_metrics(pred, mask_np, use_watershed=use_watershed)
             total_precision += metrics["precision"]
             total_recall += metrics["recall"]
             total_f1 += metrics["f1"]

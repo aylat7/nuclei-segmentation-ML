@@ -9,6 +9,8 @@ from src.visualize import (
     create_overlay,
     extract_instances,
     match_instances,
+    watershed_separate,
+    watershed_to_binary_instances,
 )
 
 
@@ -209,3 +211,52 @@ def test_instance_metrics_no_overlap():
     assert metrics["precision"] == 0.0
     assert metrics["recall"] == 0.0
     assert metrics["f1"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# watershed_separate and watershed_to_binary_instances
+# ---------------------------------------------------------------------------
+
+def _make_circle_mask(size: int, cx: int, cy: int, r: int) -> np.ndarray:
+    """Create a binary mask with a filled circle (cx=col center, cy=row center)."""
+    mask = np.zeros((size, size), dtype=bool)
+    y, x = np.ogrid[:size, :size]
+    mask[(x - cx) ** 2 + (y - cy) ** 2 <= r ** 2] = True
+    return mask
+
+
+def test_watershed_separate_splits_touching():
+    """Two overlapping circles that form one connected component should be split into 2."""
+    size = 60
+    # Radius 12, centers 22px apart -> they overlap, forming a single connected component
+    circle1 = _make_circle_mask(size, cx=15, cy=30, r=12)
+    circle2 = _make_circle_mask(size, cx=37, cy=30, r=12)
+    merged = (circle1 | circle2).astype(np.float32)
+
+    # Confirm extract_instances sees only 1 blob
+    assert len(extract_instances(merged)) == 1
+
+    # Watershed should recover 2 separate regions
+    labeled = watershed_separate(merged, min_distance=5)
+    assert len(np.unique(labeled[labeled > 0])) == 2
+
+
+def test_watershed_separate_single_blob():
+    """A single isolated circle should remain as exactly 1 region after watershed."""
+    mask = _make_circle_mask(60, cx=30, cy=30, r=12).astype(np.float32)
+    labeled = watershed_separate(mask, min_distance=5)
+    assert len(np.unique(labeled[labeled > 0])) == 1
+
+
+def test_watershed_to_binary_instances_count():
+    """watershed_to_binary_instances should produce one boolean mask per labeled region."""
+    size = 60
+    circle1 = _make_circle_mask(size, cx=15, cy=30, r=12)
+    circle2 = _make_circle_mask(size, cx=37, cy=30, r=12)
+    merged = (circle1 | circle2).astype(np.float32)
+
+    labeled = watershed_separate(merged, min_distance=5)
+    instances = watershed_to_binary_instances(labeled)
+
+    assert len(instances) == 2
+    assert instances[0].dtype == bool

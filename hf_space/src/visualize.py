@@ -5,7 +5,9 @@ from typing import Dict, List, Tuple
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.ndimage import label
+from scipy.ndimage import distance_transform_edt, label
+from skimage.feature import peak_local_max
+from skimage.segmentation import watershed
 
 
 def count_nuclei(binary_mask: np.ndarray) -> int:
@@ -51,6 +53,68 @@ def extract_instances(binary_mask: np.ndarray) -> List[np.ndarray]:
     for component_id in range(1, num_components + 1):
         instances.append(labeled == component_id)
     return instances
+
+
+def watershed_separate(binary_mask: np.ndarray, min_distance: int = 10) -> np.ndarray:
+    """Separate touching nuclei using watershed on the distance transform.
+
+    Args:
+        binary_mask: 2D binary array (0s and 1s) of shape (H, W).
+        min_distance: Minimum pixel distance between seed peaks. Larger values
+            merge nearby seeds; smaller values split more aggressively.
+
+    Returns:
+        Labeled integer array of shape (H, W). Each unique non-zero value
+        identifies one separated nucleus region.
+
+    Example:
+        >>> import numpy as np
+        >>> mask = np.zeros((40, 40), dtype=bool)
+        >>> mask[5:35, 5:35] = True
+        >>> labeled = watershed_separate(mask, min_distance=3)
+        >>> len(np.unique(labeled[labeled > 0])) >= 1
+        True
+    """
+    binary = binary_mask.astype(bool)
+    if not binary.any():
+        return np.zeros_like(binary_mask, dtype=np.int32)
+
+    distance = distance_transform_edt(binary)
+    coords = peak_local_max(distance, min_distance=min_distance, labels=binary)
+
+    marker_mask = np.zeros(binary.shape, dtype=bool)
+    if len(coords) > 0:
+        marker_mask[tuple(coords.T)] = True
+    else:
+        # Fallback: place a single seed at the distance transform maximum
+        idx = np.unravel_index(distance.argmax(), distance.shape)
+        marker_mask[idx] = True
+
+    markers, _ = label(marker_mask)
+    labeled = watershed(-distance, markers, mask=binary)
+    return labeled.astype(np.int32)
+
+
+def watershed_to_binary_instances(labeled_array: np.ndarray) -> List[np.ndarray]:
+    """Convert a labeled integer array to a list of individual boolean masks.
+
+    Args:
+        labeled_array: Integer array where each non-zero unique value identifies
+            one nucleus region, as returned by watershed_separate.
+
+    Returns:
+        List of boolean (H, W) arrays, one per labeled region.
+        Same format as extract_instances returns.
+
+    Example:
+        >>> import numpy as np
+        >>> arr = np.array([[0, 1, 1, 0], [0, 0, 2, 2]])
+        >>> len(watershed_to_binary_instances(arr))
+        2
+    """
+    unique_labels = np.unique(labeled_array)
+    unique_labels = unique_labels[unique_labels > 0]
+    return [labeled_array == lbl for lbl in unique_labels]
 
 
 def _instance_iou(mask_a: np.ndarray, mask_b: np.ndarray) -> float:
@@ -165,6 +229,7 @@ def plot_evaluation_panels(
     gt_mask: np.ndarray,
     save_path: str,
     iou_threshold: float = 0.5,
+    use_watershed: bool = False,
 ) -> None:
     """Generate and save a 4-panel color-coded evaluation figure.
 
@@ -178,8 +243,14 @@ def plot_evaluation_panels(
         gt_mask: Ground truth binary mask, shape (H, W).
         save_path: File path to save the figure.
         iou_threshold: IoU threshold for TP/FP/FN matching.
+        use_watershed: When True, apply watershed to pred_mask before extracting
+            prediction instances. Ground truth always uses extract_instances.
     """
-    pred_instances = extract_instances(pred_mask)
+    if use_watershed:
+        labeled = watershed_separate(pred_mask)
+        pred_instances = watershed_to_binary_instances(labeled)
+    else:
+        pred_instances = extract_instances(pred_mask)
     gt_instances = extract_instances(gt_mask)
     tp, fp, fn = match_instances(pred_instances, gt_instances, iou_threshold)
 
@@ -219,9 +290,10 @@ def plot_evaluation_panels(
     # Compose 2x2 figure with legend
     fig, axes = plt.subplots(2, 2, figsize=(10, 10))
 
+    pred_suffix = ", watershed" if use_watershed else ""
     titles = [
         "Input Image",
-        f"Instance Correctness - Prediction ({len(pred_instances)} detected)",
+        f"Instance Correctness - Prediction ({len(pred_instances)} detected{pred_suffix})",
         f"Instance Correctness - Annotation ({len(gt_instances)} nuclei)",
         "Pixel Correctness",
     ]
@@ -257,6 +329,7 @@ def compute_instance_metrics(
     pred_mask: np.ndarray,
     gt_mask: np.ndarray,
     iou_threshold: float = 0.5,
+    use_watershed: bool = False,
 ) -> Dict[str, float]:
     """Compute instance-level precision, recall, and F1.
 
@@ -264,6 +337,8 @@ def compute_instance_metrics(
         pred_mask: Predicted binary mask, shape (H, W).
         gt_mask: Ground truth binary mask, shape (H, W).
         iou_threshold: IoU threshold for TP matching.
+        use_watershed: When True, apply watershed to pred_mask before extracting
+            prediction instances. Ground truth always uses extract_instances.
 
     Returns:
         Dictionary with keys "precision", "recall", "f1".
@@ -276,7 +351,11 @@ def compute_instance_metrics(
         >>> m["f1"]
         1.0
     """
-    pred_instances = extract_instances(pred_mask)
+    if use_watershed:
+        labeled = watershed_separate(pred_mask)
+        pred_instances = watershed_to_binary_instances(labeled)
+    else:
+        pred_instances = extract_instances(pred_mask)
     gt_instances = extract_instances(gt_mask)
     tp, fp, fn = match_instances(pred_instances, gt_instances, iou_threshold)
 
