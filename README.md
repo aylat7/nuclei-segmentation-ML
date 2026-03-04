@@ -55,7 +55,21 @@ Upload any microscopy image to get an instant segmentation overlay. The app high
 
 Attention U-Net wins on pixel-level metrics (Dice +0.006, IoU +0.010), meaning its predicted masks have more accurate boundaries against the ground truth. However, standard U-Net achieves a higher instance-level F1 (0.8323 vs 0.7802) without post-processing. The explanation: attention gates concentrate the model on foreground regions globally, which sharpens boundary pixels, but the same global focus can cause the decoder to merge adjacent touching nuclei into a single connected blob. Standard U-Net propagates more spatially local skip features, which helps it preserve the separation between closely packed cells.
 
-**Watershed post-processing** (`Use watershed post-processing` checkbox in the demo, default on) addresses this directly. By running a distance-transform watershed on the predicted binary mask, touching nuclei that were merged into one connected component by the model are separated into individual instances before evaluation. This improves instance-level metrics for both models, especially Attention U-Net, narrowing the instance-F1 gap without any retraining.
+A watershed post-processing toggle is available in the demo for experimentation, though the baseline without it achieves better metrics at this resolution (see Watershed Experiment below).
+
+### Watershed Experiment
+
+Watershed post-processing was implemented and evaluated to test whether separating touching nuclei after prediction could improve instance-level metrics without retraining. The approach applies morphological opening (disk radius 2) to the binary mask, computes a distance transform, finds seed peaks via `peak_local_max`, and runs `skimage.segmentation.watershed` on the negative distance transform. Regions smaller than 15 pixels are discarded as fragments.
+
+Three parameter settings were tested on the Attention U-Net validation set (n=80 samples):
+
+| Setting | Precision | Recall | F1 |
+|---|---|---|---|
+| No watershed (baseline) | 0.8322 | 0.8562 | **0.8370** |
+| min_distance=5, min_size=15 | 0.7978 | 0.6551 | 0.7015 |
+| min_distance=3, min_size=15 | 0.7188 | 0.6751 | 0.6772 |
+
+The baseline without watershed consistently outperformed all watershed configurations (best watershed F1 0.70 vs baseline 0.837). The primary cause is recall collapse: at 128x128 resolution, many nuclei are only 10 to 20 pixels across. The morphological opening with a disk of radius 2 erases these small nuclei before the distance transform runs, so the watershed never gets seeds for them. The watershed code remains in `src/visualize.py` and is available as an unchecked toggle in the Gradio demo for experimentation. See the Future Improvements section for approaches that would make instance separation more effective.
 
 ---
 
@@ -275,6 +289,18 @@ The suite contains **58 tests** across 7 modules:
 | `test_visualize.py` | Instance extraction, greedy matching (TP/FP/FN), overlay dtype and shape, nucleus counting, watershed separation of touching blobs |
 | `test_training.py` | Loss decreases over epochs, checkpoint saved, history dict keys |
 | `test_load_model.py` | `load_model` dispatches to correct architecture, rejects mismatched weights |
+
+---
+
+## Future Improvements
+
+**Training at higher resolution (256x256 or 512x512).** At 128x128, nuclei occupy only 10 to 20 pixels in diameter, which leaves very little spatial structure for post-processing steps like watershed to work with. Training at higher resolution would give the model more pixels per nucleus, making distance transform peaks sharper and more reliable, and would likely close the gap between semantic segmentation with post-processing and dedicated instance segmentation methods.
+
+**Multi-class segmentation with explicit boundary prediction.** Instead of predicting a single foreground/background mask, training the model to output three classes (background, nucleus interior, nucleus boundary) would give the watershed algorithm a learned signal for where to place splits. Rather than guessing separation points from the distance transform alone, it could follow boundaries the model has explicitly been trained to find. This is the approach used in the Cell Tracking Challenge winners and significantly reduces over-merging in dense fields.
+
+**Confidence-based seed detection.** The current watershed implementation binarizes the model output before computing seeds, which discards the spatial confidence information in the raw sigmoid map. Nucleus centers naturally produce higher sigmoid values than nucleus edges, so using the raw probability map directly to locate seeds would place them more accurately at nucleus centers and reduce the chance of finding spurious peaks on jagged boundaries.
+
+**Instance segmentation architectures.** Models like Mask R-CNN and StarDist are purpose-built for detecting and delineating individual objects and would handle overlapping nuclei far better than a semantic segmentation model with post-processing. StarDist in particular was designed for roundish cells and predicts a star-convex polygon per nucleus, giving clean individual instances without any separate separation step. The trade-off is increased model complexity and training data requirements compared to the U-Net approach used here.
 
 ---
 
