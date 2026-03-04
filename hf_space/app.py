@@ -16,6 +16,7 @@ from src.model import UNet
 from src.utils import load_config, get_device
 from src.visualize import (
     compute_instance_metrics,
+    count_nuclei,
     create_overlay,
     extract_instances,
     match_instances,
@@ -139,6 +140,7 @@ def run_inference(
     Returns:
         Tuple of:
         - segmentation_overlay: RGB image with green nuclei overlay.
+        - count_text: Nucleus count string.
         - evaluation_panels: 4-panel figure (None if no GT provided).
         - metrics_text: Formatted metrics string.
         - raw_mask: Binary mask as uint8 image.
@@ -147,7 +149,7 @@ def run_inference(
     if model is None:
         msg = f"No trained checkpoint found for {model_name}. Run train_model.py first."
         blank = np.zeros((IMAGE_SIZE, IMAGE_SIZE, 3), dtype=np.uint8)
-        return blank, None, msg, blank
+        return blank, "No model loaded.", None, msg, blank
 
     pil_image = Image.fromarray(input_image.astype(np.uint8))
     image_tensor, original_size = _preprocess_image(pil_image)
@@ -159,6 +161,7 @@ def run_inference(
     # --- Tab 1: Segmentation overlay (green nuclei) ---
     pred_instances = extract_instances(pred_mask)
     seg_overlay = create_overlay(img_orig, pred_instances, [], [])
+    count_text = f"Detected {count_nuclei(pred_mask)} nuclei"
 
     # --- Tab 4: Raw mask ---
     raw_mask_img = (pred_mask * 255).astype(np.uint8)
@@ -216,7 +219,7 @@ def run_inference(
         eval_panel_img = None
 
     metrics_text = "\n".join(metrics_lines)
-    return seg_overlay, eval_panel_img, metrics_text, raw_mask_rgb
+    return seg_overlay, count_text, eval_panel_img, metrics_text, raw_mask_rgb
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +258,7 @@ def build_interface() -> gr.Blocks:
                 with gr.Tabs():
                     with gr.Tab("Segmentation"):
                         seg_output = gr.Image(label="Prediction Overlay (green = nuclei)")
+                        count_output = gr.Textbox(label="Nucleus Count", interactive=False)
                     with gr.Tab("Evaluation Panels"):
                         eval_output = gr.Image(
                             label="4-Panel Evaluation (requires ground truth)"
@@ -269,7 +273,7 @@ def build_interface() -> gr.Blocks:
         run_btn.click(
             fn=run_inference,
             inputs=[input_image, gt_mask, model_selector, threshold_slider],
-            outputs=[seg_output, eval_output, metrics_output, mask_output],
+            outputs=[seg_output, count_output, eval_output, metrics_output, mask_output],
         )
 
         gr.Markdown(
@@ -280,7 +284,6 @@ def build_interface() -> gr.Blocks:
     return demo
 
 
-demo = build_interface()
-
 if __name__ == "__main__":
-    demo.launch()
+    demo = build_interface()
+    demo.launch(server_port=7860, share=False)

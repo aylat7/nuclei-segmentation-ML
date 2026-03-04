@@ -5,10 +5,34 @@ import pytest
 
 from src.visualize import (
     compute_instance_metrics,
+    count_nuclei,
     create_overlay,
     extract_instances,
     match_instances,
 )
+
+
+# ---------------------------------------------------------------------------
+# count_nuclei
+# ---------------------------------------------------------------------------
+
+def test_count_nuclei():
+    """Mask with 3 separate blobs should return count of 3."""
+    mask = _make_mask_with_blobs(50, [(0, 0, 5, 5), (20, 20, 5, 5), (40, 40, 5, 5)])
+    assert count_nuclei(mask) == 3
+
+
+def test_count_nuclei_empty():
+    """Empty mask should return 0."""
+    mask = np.zeros((20, 20), dtype=bool)
+    assert count_nuclei(mask) == 0
+
+
+def test_count_nuclei_single():
+    """Single connected region should return 1."""
+    mask = np.zeros((20, 20), dtype=bool)
+    mask[5:15, 5:15] = True
+    assert count_nuclei(mask) == 1
 
 
 # ---------------------------------------------------------------------------

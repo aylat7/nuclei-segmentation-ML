@@ -8,6 +8,27 @@ import numpy as np
 from scipy.ndimage import label
 
 
+def count_nuclei(binary_mask: np.ndarray) -> int:
+    """Count the number of nuclei (connected components) in a binary mask.
+
+    Args:
+        binary_mask: 2D binary or boolean array of shape (H, W).
+
+    Returns:
+        Number of connected components found in the mask.
+
+    Example:
+        >>> import numpy as np
+        >>> mask = np.zeros((20, 20), dtype=bool)
+        >>> mask[0:5, 0:5] = True
+        >>> mask[10:15, 10:15] = True
+        >>> count_nuclei(mask)
+        2
+    """
+    _, count = label(binary_mask.astype(bool))
+    return int(count)
+
+
 def extract_instances(binary_mask: np.ndarray) -> List[np.ndarray]:
     """Find connected components in a binary mask, one array per nucleus.
 
@@ -200,8 +221,8 @@ def plot_evaluation_panels(
 
     titles = [
         "Input Image",
-        "Instance Correctness (Prediction)",
-        "Instance Correctness (Annotation)",
+        f"Instance Correctness - Prediction ({len(pred_instances)} detected)",
+        f"Instance Correctness - Annotation ({len(gt_instances)} nuclei)",
         "Pixel Correctness",
     ]
     panels = [panel_input, panel_pred, panel_gt, panel_pixel]
